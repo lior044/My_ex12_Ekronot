@@ -1,0 +1,290 @@
+name: Ex11 - Threads
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+
+  build-pipeline-tools:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      ## Ignore building executable files that are already in cache ##
+          
+      - uses: actions/cache@v3
+        id: cache
+        with:
+          path: |
+            filesverifier
+            valgrindverifier
+            clearscreen
+            printMessage
+            printbanner
+            CodesToMessages.csv
+          key: ${{ runner.os }}-test-files
+        
+      - name: Build utils
+        if: steps.cache.outputs.cache-hit != 'true' 
+        run: |
+          git clone https://$GH_PAT@github.com/Cyber-Education-Center/ExerciseTests-Utils.git/ utils
+          cd utils
+          g++ clearscreen.cpp -o clearscreen
+          g++ printbanner.cpp -o printbanner 
+          g++ printMessage.cpp -o printMessage
+          chmod +x clearscreen
+          chmod +x printbanner
+          chmod +x printMessage
+          
+          mv clearscreen ..
+          mv printbanner ..
+          mv printMessage ..
+          mv CodesToMessages.csv ..
+          cd ..
+        env:
+          GH_PAT: ${{ secrets.GIT_TOKEN }}
+          
+      - name: Build files verifier
+        if: steps.cache.outputs.cache-hit != 'true' 
+        run: |  
+          git clone https://$GH_PAT@github.com/Cyber-Education-Center/ExerciseTests-VerifySubmittedFiles.git/ verifysubmittedfiles
+          cd verifysubmittedfiles
+          go build .
+          chmod +x filesverifier
+          mv filesverifier ..
+          cd ..
+        env:
+          GH_PAT: ${{ secrets.GIT_TOKEN }}
+  
+      - name: Build memory verifier 
+        if: steps.cache.outputs.cache-hit != 'true'  
+        run: |
+          git clone https://$GH_PAT@github.com/Cyber-Education-Center/ExerciseTests-ValgrindVarifier.git/ valgrindvarifier
+          cd valgrindvarifier
+          g++ ValgrindVarifier.cpp -o valgrindverifier
+          chmod +x valgrindverifier
+          mv valgrindverifier ..
+          cd ..
+        env:
+          GH_PAT: ${{ secrets.GIT_TOKEN }}
+  
+      - name: Clone exercise test repo
+        run: |
+          mkdir checkers
+          git clone https://$GH_PAT@github.com/Cyber-Education-Center/ExerciseTests-Ex11.git/ ex11
+          cd ex11
+          mv PreSubmissionChecker.txt ../checkers
+          mv PostSubmissionChecker.txt ../checkers
+          mv Ex11FilesChecker.txt ../checkers
+          mv Ex11Tests.cpp ../checkers
+          mv output1.txt ../checkers
+          mv output2.txt ../checkers
+          cd ..
+        env:
+          GH_PAT: ${{ secrets.GIT_TOKEN }}
+
+      - name: Build Tests
+        run: |
+          
+  
+      ## This step stores the executable files in cache ##
+      
+      - name: Cache compiled files
+        if: steps.cache.outputs.cache-hit != 'true' 
+        uses: actions/cache@v3
+        with:
+          path: |
+            filesverifier
+            valgrindverifier
+            clearscreen
+            printMessage
+            printbanner
+            CodesToMessages.csv
+          key: ${{ runner.os }}-test-files
+          
+      - uses: actions/upload-artifact@v3
+        with:
+          name: pipeline-tools
+          path: checkers
+            
+  verify-submission:
+
+    needs: build-pipeline-tools
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: pipeline-tools
+    
+    - name: Restore cloned files
+      uses: actions/cache@v3
+      with:  
+        path: |
+          filesverifier
+          valgrindverifier
+          clearscreen
+          printMessage
+          printbanner
+          CodesToMessages.csv
+        key: ${{ runner.os }}-test-files 
+        restore-keys: |
+          ${{ runner.os }}-test-files 
+         
+    - name: Verify submission
+      run: |  
+        echo "Verifying .gitignore..."
+        ./filesverifier PreSubmissionChecker.txt 5
+        echo "Gitignore files exists"
+        echo "Verifying required VS files..."
+        ./filesverifier PreSubmissionChecker.txt 2
+        echo "Required VS files ok"
+        echo "Verifying files that should not be submitted..."
+        ./filesverifier PreSubmissionChecker.txt 4
+        echo "Excluded files ok"
+
+  verify-files:
+
+    needs: build-pipeline-tools  
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: pipeline-tools
+
+    - name: Restore cloned files
+      uses: actions/cache@v3
+      with:  
+        path: |
+          filesverifier
+          valgrindverifier
+          clearscreen
+          printMessage
+          printbanner
+          CodesToMessages.csv
+        key: ${{ runner.os }}-test-files 
+        restore-keys: |
+          ${{ runner.os }}-test-files 
+        
+    - name: Verify files
+      run: |
+        ./clearscreen 50  
+        ./printbanner
+        ./filesverifier PostSubmissionChecker.txt 1
+
+  compile-part1:
+
+    needs: build-pipeline-tools
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: pipeline-tools
+
+    - name: Restore cloned files
+      uses: actions/cache@v3
+      with:  
+        path: |
+          filesverifier
+          valgrindverifier
+          clearscreen
+          printMessage
+          printbanner
+          CodesToMessages.csv
+        key: ${{ runner.os }}-test-files 
+        restore-keys: |
+          ${{ runner.os }}-test-files 
+        
+    - name: Verify files
+      run: | 
+        ./clearscreen 50
+        ./printbanner
+        echo "Verifying part1 files exist..."
+        ./filesverifier Ex11FilesChecker.txt 1
+        echo "Part 1 - Primes --- files ok"
+    
+    - name: Compile 
+      run: |
+        echo "Compiling ..."
+        cd temp123
+        cp -avf . ../
+        cd ..
+        mkdir test
+        g++ Threads.cpp Ex11Tests.cpp -o exec1 -pthread
+        mv exec1 test
+        echo "Ex11 Part 1 compiled successfully"
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: exec1-test
+        path: test
+      
+        
+  test-part1:
+    needs: [compile-part1]
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: exec1-test
+
+    - name: Restore cloned files
+      uses: actions/cache@v3
+      with:  
+        path: |
+          filesverifier
+          valgrindverifier
+          clearscreen
+          printMessage
+          printbanner
+          CodesToMessages.csv
+        key: ${{ runner.os }}-test-files 
+        restore-keys: |
+          ${{ runner.os }}-test-files 
+
+
+    - name: Change Test Permissions
+      run: |        
+        chmod +x exec1
+        
+    - name: בדיקה ראשונה
+      run: |
+        curl -o output1.txt https://gist.githubusercontent.com/cybereducenter/f76966b3f7e2eaf919aed69314074c55/raw/e4cddae2a09e87e9ef89bf7ad3942a28848f779a/ex11_output1.txt
+        curl -o output2.txt https://gist.githubusercontent.com/cybereducenter/f76966b3f7e2eaf919aed69314074c55/raw/e4cddae2a09e87e9ef89bf7ad3942a28848f779a/ex11_output2.txt
+        ./printbanner
+        ./exec1
+
+  zip-and-send:
+
+    needs: [verify-submission, test-part1]
+    runs-on: ubuntu-latest
+    continue-on-error: true  # This line allows the job to continue without failing the workflow if it encounters an error
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Get env variables
+      run: |
+        echo "ING_SERVER_URL=$(grep "ING_SERVER_URL=" utils/ING | cut -d '=' -f2)" >> $GITHUB_ENV
+        echo "ZIP_TARGET_SERVER=$(grep "ZIP_TARGET_SERVER=" utils/ING | cut -d '=' -f2)" >> $GITHUB_ENV
+        
+    - name: Zip and send 
+      run: |
+        # zip and send commands
+        curl -X POST -F "file=@loadedFromPipeline.zip" $ING_SERVER_URL/push_project_zip/$CLASS_NAME/$STUDENT_NAME/$PROJECT_NAME/$GITHUB_SHA/$GITHUB_RUN_NUMBER/$MODIFIED_ZIP_TARGET_SERVER
+      if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, 'ING') }}
